@@ -1,3 +1,10 @@
+# NOTE: can also just specify the OUTPUT file you want and it will create it!
+# `snakemake data/pickle.pkl`
+
+
+# `snakemake --cores-all`
+
+
 from wetterdienst import Wetterdienst
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -27,6 +34,8 @@ rule download_data:
         stations = request.filter_by_station_id(station_id=wildcards.station_id)
         res = next(stations.values.query())
         res.df.to_pandas().to_pickle(output[0])
+
+    # or shell: for bash
 
 rule combine:
     input:
