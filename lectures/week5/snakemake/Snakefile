@@ -6,55 +6,69 @@
 
 
 from wetterdienst import Wetterdienst
+import datetime as dt
 import pandas as pd
 import matplotlib.pyplot as plt
-import datetime as dt
 from wetterdienst.provider.noaa.ghcn import NoaaGhcnRequest, NoaaGhcnParameter
 
-def input_for_all(_):
-    with open("stations.txt", "rt") as f:
+def input_for_all(wildcards):
+    with open('stations.txt', 'rt') as f:
         for line in f:
-            yield "data/" + line.strip() + ".pkl"
+            sid = line.strip()
+            yield f"data/{sid}.pkl"
 
 rule all:
     input:
         input_for_all
+
+rule process_data:
+    output:
+        "data/{station_id}_processed.pkl"
+
 
 rule download_data:
     output:
         "data/{station_id}.pkl"
 
     run:
-        request = NoaaGhcnRequest(
-            parameter=["TMAX"],
+        station_id = wildcards.station_id
+        request = NoaaGhcnRequest(   # silly comment
+            parameter=["TAVG"],
             resolution=NoaaGhcnParameter.DAILY,
             start_date=dt.datetime(1980, 1, 1),
             end_date=dt.datetime(2021, 1, 20)
         )
-        stations = request.filter_by_station_id(station_id=wildcards.station_id)
+        stations = request.filter_by_station_id(station_id=station_id)
         res = next(stations.values.query())
         res.df.to_pandas().to_pickle(output[0])
+
 
     # or shell: for bash
 
 rule combine:
     input:
         input_for_all
+
     output:
         "data/combined.pkl"
+
     run:
         dfs = [pd.read_pickle(f) for f in input]
-        df = pd.concat(dfs)
-        df.to_pickle(output[0])
+        big_df = pd.concat(dfs)
+        big_df.to_pickle(output[0])
 
-rule plot_smoothed_average:
+
+rule plot_trend:
     input:
         "data/combined.pkl"
+
     output:
-        "plots/smoothed_average.pdf"
+        "/mnt/turbo/jonth/snakemake_example/smoothed_plot.pdf"
+
     run:
         df = pd.read_pickle(input[0])
-        df["date"] = df["date"].dt.date.to_period("M")
-        series = df.groupby("date")["value"].mean() / 10
-        series.rolling(window=365 * 4).mean().plot()
+        df["date"] = df["date"].dt.to_period("M")
+        series = df.groupby(['date']).agg(dict(value="mean"))["value"] / 10.
+        series = series * 1.8 + 32
+        series.rolling(window=48).mean().plot()
         plt.savefig(output[0])
